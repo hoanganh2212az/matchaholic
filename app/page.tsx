@@ -1,7 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useMemo, useState } from "react";
-import Image from "next/image";
 
 type Category = "matcha" | "pastry" | "coffee";
 type Size = "M" | "L";
@@ -434,18 +435,10 @@ export default function Home() {
           </div>
 
           <div className="poster-stack" aria-label="Original menu posters">
-            <Image
-              src="/menu-drinks.png"
-              alt="Matcha.holic drinks menu poster"
-              width={750}
-              height={916}
-              priority
-            />
-            <Image
+            <img src="/menu-drinks.png" alt="Matcha.holic drinks menu poster" />
+            <img
               src="/menu-pastries-coffee.png"
               alt="Matcha.holic pastries and coffee menu poster"
-              width={750}
-              height={916}
             />
           </div>
         </section>
