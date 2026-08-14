@@ -37,7 +37,8 @@ type CartItem = {
   quantity: number;
 };
 
-const facebookPage = "https://m.me/61564439125616";
+const facebookPageId = "61564439125616";
+const facebookPage = `https://m.me/${facebookPageId}`;
 
 const matchaChoices = [
   "Matcha Satoen",
@@ -368,7 +369,7 @@ export default function Home() {
     setCopyStatus("");
   }
 
-  async function copyOrder() {
+  async function copyOrder(successMessage = "Order copied.") {
     if (cart.length === 0) {
       setCopyStatus("Add an item first.");
       return false;
@@ -376,7 +377,7 @@ export default function Home() {
 
     try {
       await navigator.clipboard.writeText(orderText);
-      setCopyStatus("Order copied.");
+      setCopyStatus(successMessage);
       return true;
     } catch {
       setCopyStatus("Copy blocked. Select the order text below.");
@@ -384,18 +385,24 @@ export default function Home() {
     }
   }
 
-  function sendToFacebook() {
+  async function sendToFacebook() {
     if (cart.length === 0) {
       setCopyStatus("Add an item first.");
       return;
     }
 
-    void copyOrder();
-    window.open(
-      `${facebookPage}?text=${encodeURIComponent(orderText)}`,
-      "_blank",
-      "noopener,noreferrer",
+    await copyOrder(
+      "Order copied. Messenger is opening; if the message box is empty, paste the copied order.",
     );
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const messengerUrl = isMobile
+      ? `${facebookPage}?text=${encodeURIComponent(orderText)}`
+      : `https://www.messenger.com/t/${facebookPageId}?text=${encodeURIComponent(
+          orderText,
+        )}`;
+
+    window.open(messengerUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
