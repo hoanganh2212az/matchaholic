@@ -705,7 +705,13 @@ export default function Home() {
               <span>Total</span>
               <strong>{money(total)}</strong>
             </div>
-            <button className="copy-button" onClick={copyOrder} type="button">
+            <button
+              className="copy-button"
+              onClick={() => {
+                void copyOrder();
+              }}
+              type="button"
+            >
               Copy order
             </button>
             <button className="send-button" onClick={sendToFacebook} type="button">
