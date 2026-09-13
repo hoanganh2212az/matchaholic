@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://matchaholic.vercel.app";
-const title = "matcha.holic menu";
+const fontSans = Plus_Jakarta_Sans({
+  subsets: ["latin", "vietnamese"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://matchaholic.vercel.app";
+const title = "matcha.holic - Menu & Đặt món Matcha Bar";
 const description =
-  "Order matcha lattes, coconut matcha, pastries, and coffee from matcha.holic.";
+  "Menu matcha latte, sữa yến mạch, coconut matcha, bánh ngọt và cà phê từ matcha.holic. Đặt món nhanh chóng và gửi trực tiếp qua Facebook Messenger.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -19,6 +27,7 @@ export const metadata: Metadata = {
     description,
     type: "website",
     url: siteUrl,
+    locale: "vi_VN",
     images: [
       {
         url: "/og.png",
@@ -42,7 +51,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="vi" className={fontSans.variable}>
       <body>{children}</body>
     </html>
   );
