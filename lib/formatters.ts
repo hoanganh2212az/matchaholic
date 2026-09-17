@@ -8,12 +8,26 @@ export function compactMoney(value: number): string {
   return `${value}k`;
 }
 
+export interface LoyaltyOrderMeta {
+  optedIn: boolean;
+  isNewMember?: boolean;
+  phone?: string;
+}
+
 export function generateOrderText(
   customer: CustomerInfo,
   cart: CartItem[],
   total: number,
+  orderCode?: string,
+  loyaltyInfo?: LoyaltyOrderMeta,
 ): string {
-  const lines = ["Matcha.holic order", ""];
+  const lines = [
+    orderCode
+      ? `Matcha.holic order #${orderCode}`
+      : "Matcha.holic order",
+    orderCode ? "⭐️ Xác nhận đơn để tích điểm thưởng!" : "",
+    "",
+  ].filter(Boolean);
 
   if (customer.name.trim()) lines.push(`Name: ${customer.name.trim()}`);
   if (customer.phone.trim()) lines.push(`Phone: ${customer.phone.trim()}`);
@@ -53,5 +67,18 @@ export function generateOrderText(
   }
 
   lines.push("", `Total: ${money(total)}`);
+
+  if (loyaltyInfo?.optedIn) {
+    const targetPhone = loyaltyInfo.phone || customer.phone.trim();
+    lines.push("");
+    if (loyaltyInfo.isNewMember) {
+      lines.push(
+        `Mình muốn đăng kí tích điểm, bạn kích hoạt cho số điện thoại: ${targetPhone} nha. Hẹn gặp Matchaholic lần tiếp theo!`,
+      );
+    } else {
+      lines.push(`⭐️ Khách hàng thân thiết: Tích điểm cho SĐT ${targetPhone}`);
+    }
+  }
+
   return lines.join("\n");
 }

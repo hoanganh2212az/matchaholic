@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { CustomerInfo, Extra, MenuItem, Size } from "../types/menu";
 import {
   COFFEES,
@@ -9,7 +9,7 @@ import {
   FACEBOOK_PAGE_URL,
   PASTRIES,
 } from "../data/menu";
-import { generateOrderText } from "../lib/formatters";
+import { generateOrderText, type LoyaltyOrderMeta } from "../lib/formatters";
 import {
   getCartSnapshot,
   getCustomerSnapshot,
@@ -21,6 +21,12 @@ import {
   updateCustomer,
 } from "../lib/storage";
 import { validateOrder, type ValidationErrors } from "../lib/validation";
+import {
+  getCustomerOrders,
+  registerOrGetCustomer,
+  submitOrder,
+  supabase,
+} from "../lib/supabase";
 import { Header } from "../components/Header";
 import { Hero } from "../components/Hero";
 import { DrinkCard } from "../components/DrinkCard";
@@ -43,6 +49,11 @@ export default function Home() {
 
   const [copyStatus, setCopyStatus] = useState("");
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [activeOrderCode, setActiveOrderCode] = useState<string>("");
+  const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyOrderMeta>({
+    optedIn: true,
+  });
+  const [preferences, setPreferences] = useState<string>("");
 
   // Modal customization state
   const [selectedProduct, setSelectedProduct] = useState<MenuItem | null>(null);
@@ -66,9 +77,71 @@ export default function Home() {
     [cart],
   );
 
+  // Clear customer's current cart if their past order has been confirmed
+  useEffect(() => {
+    const checkAndClearIfConfirmed = async () => {
+      const phone = customer.phone.trim();
+      if (!phone && !activeOrderCode) return;
+
+      const orders = await getCustomerOrders(null, phone);
+      const hasConfirmed = orders.some(
+        (o) =>
+          (o.status === "confirmed" || o.status === "completed") &&
+          (activeOrderCode ? o.orderCode === activeOrderCode : true),
+      );
+
+      if (hasConfirmed && cart.length > 0) {
+        updateCart([]);
+      }
+    };
+
+    checkAndClearIfConfirmed();
+
+    const handleFocus = () => {
+      checkAndClearIfConfirmed();
+    };
+    window.addEventListener("focus", handleFocus);
+
+    // Also listen in realtime for orders being confirmed
+    const channel = supabase
+      .channel("orders-cart-clearing")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        (payload) => {
+          if (
+            payload.new &&
+            (payload.new.status === "confirmed" || payload.new.status === "completed")
+          ) {
+            const orderPhone = payload.new.customer_phone;
+            const currentPhone = customer.phone.trim();
+            if (
+              (currentPhone && orderPhone === currentPhone) ||
+              payload.new.order_code === activeOrderCode
+            ) {
+              updateCart([]);
+            }
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [customer.phone, activeOrderCode, cart.length]);
+
   const orderText = useMemo(
-    () => generateOrderText(customer, cart, total),
-    [customer, cart, total],
+    () =>
+      generateOrderText(
+        customer,
+        cart,
+        total,
+        activeOrderCode || undefined,
+        loyaltyInfo,
+      ),
+    [customer, cart, total, activeOrderCode, loyaltyInfo],
   );
 
   const handleOpenCustomize = useCallback(
@@ -217,26 +290,71 @@ export default function Home() {
     [],
   );
 
-  const handleCopyOrder = useCallback(
-    async (successMessage = "Đã sao chép nội dung đơn hàng vào clipboard!") => {
-      const validation = validateOrder(customer, cart);
-      if (!validation.isValid) {
-        setValidationErrors(validation.errors);
-        return false;
+  const ensureOrderSaved = useCallback(async () => {
+    const validation = validateOrder(customer, cart);
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      return null;
+    }
+
+    let customerProfileId: string | null = null;
+    if (loyaltyInfo.optedIn && customer.phone.trim()) {
+      const profile = await registerOrGetCustomer({
+        phone: customer.phone.trim(),
+        name: customer.name.trim(),
+        address: customer.address.trim(),
+        preferences: preferences.trim() || undefined,
+      });
+      if (profile?.id) {
+        customerProfileId = profile.id;
       }
+    }
+
+    const savedOrder = await submitOrder(
+      {
+        customerName: customer.name.trim(),
+        customerPhone: customer.phone.trim(),
+        fulfillment: customer.fulfillment,
+        address: customer.address.trim(),
+        note: customer.note.trim(),
+        items: cart,
+        totalAmount: total,
+      },
+      customerProfileId,
+    );
+
+    setActiveOrderCode(savedOrder.orderCode);
+    return savedOrder;
+  }, [cart, customer, loyaltyInfo, preferences, total]);
+
+  const handleCopyOrder = useCallback(
+    async (successMessage?: string) => {
+      const savedOrder = await ensureOrderSaved();
+      if (!savedOrder) return false;
+
+      const finalOrderText = generateOrderText(
+        customer,
+        cart,
+        total,
+        savedOrder.orderCode,
+        loyaltyInfo,
+      );
 
       try {
-        await navigator.clipboard.writeText(orderText);
-        setCopyStatus(successMessage);
+        await navigator.clipboard.writeText(finalOrderText);
+        setCopyStatus(
+          successMessage ||
+            `Đã tạo đơn #${savedOrder.orderCode} & sao chép vào clipboard!`,
+        );
         return true;
       } catch {
         setCopyStatus(
-          "Không thể tự động sao chép. Vui lòng chọn và sao chép bên dưới.",
+          `Đã tạo đơn #${savedOrder.orderCode}. Vui lòng sao chép nội dung bên dưới.`,
         );
         return false;
       }
     },
-    [cart, customer, orderText],
+    [cart, customer, ensureOrderSaved, loyaltyInfo, total],
   );
 
   const handleSendToFacebook = useCallback(async () => {
@@ -250,22 +368,43 @@ export default function Home() {
       return;
     }
 
-    await handleCopyOrder(
-      "Đã sao chép đơn hàng! Đang mở Messenger... Nếu khung chat trống, bạn chỉ cần nhấn Dán (Paste) nhé.",
+    const savedOrder = await ensureOrderSaved();
+    if (!savedOrder) return;
+
+    const finalOrderText = generateOrderText(
+      customer,
+      cart,
+      total,
+      savedOrder.orderCode,
+      loyaltyInfo,
     );
+
+    try {
+      await navigator.clipboard.writeText(finalOrderText);
+    } catch {
+      // ignore
+    }
+
+    setCopyStatus(
+      `Đã ghi nhận đơn #${savedOrder.orderCode}! Đang mở Messenger... Nhân viên quán sẽ xác nhận và tích điểm cho bạn.`,
+    );
+
+    // Clear current cart now that order has been submitted
+    updateCart([]);
 
     const isMobile =
       typeof navigator !== "undefined" &&
       /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     const messengerUrl = isMobile
-      ? `${FACEBOOK_PAGE_URL}?text=${encodeURIComponent(orderText)}`
+      ? `${FACEBOOK_PAGE_URL}?text=${encodeURIComponent(finalOrderText)}`
       : `https://www.messenger.com/t/${FACEBOOK_PAGE_ID}?text=${encodeURIComponent(
-          orderText,
+          finalOrderText,
         )}`;
 
     window.open(messengerUrl, "_blank", "noopener,noreferrer");
-  }, [cart, customer, handleCopyOrder, orderText]);
+  }, [cart, customer, ensureOrderSaved, loyaltyInfo, total]);
+
 
   const handleScrollToOrder = useCallback(() => {
     const orderSection = document.getElementById("order");
@@ -367,6 +506,9 @@ export default function Home() {
           onSendToFacebook={handleSendToFacebook}
           orderText={orderText}
           validationErrors={validationErrors}
+          loyaltyInfo={loyaltyInfo}
+          onUpdateLoyaltyInfo={setLoyaltyInfo}
+          onUpdatePreferences={setPreferences}
         />
       </section>
 

@@ -1,6 +1,10 @@
+import { useEffect, useState } from "react";
 import type { CartItem, CustomerInfo } from "../types/menu";
 import type { ValidationErrors } from "../lib/validation";
+import type { LoyaltyOrderMeta } from "../lib/formatters";
+import type { UserProfile } from "../types/loyalty";
 import { compactMoney, money } from "../lib/formatters";
+import { checkCustomerByPhone } from "../lib/supabase";
 
 type OrderPanelProps = {
   cart: CartItem[];
@@ -14,6 +18,9 @@ type OrderPanelProps = {
   onSendToFacebook: () => Promise<void>;
   orderText: string;
   validationErrors: ValidationErrors;
+  loyaltyInfo: LoyaltyOrderMeta;
+  onUpdateLoyaltyInfo: (info: LoyaltyOrderMeta) => void;
+  onUpdatePreferences?: (pref: string) => void;
 };
 
 export function OrderPanel({
@@ -28,7 +35,65 @@ export function OrderPanel({
   onSendToFacebook,
   orderText,
   validationErrors,
+  loyaltyInfo,
+  onUpdateLoyaltyInfo,
+  onUpdatePreferences,
 }: OrderPanelProps) {
+  const [wantsMembership, setWantsMembership] = useState(loyaltyInfo?.optedIn ?? true);
+  const [existingProfile, setExistingProfile] = useState<UserProfile | null>(null);
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+  const [preferences, setPreferences] = useState("");
+
+  // Check phone in Supabase whenever customer.phone changes
+  useEffect(() => {
+    const rawPhone = customer.phone.trim();
+    if (!rawPhone || rawPhone.length < 9) {
+      setExistingProfile(null);
+      onUpdateLoyaltyInfo({
+        optedIn: wantsMembership,
+        isNewMember: true,
+        phone: rawPhone,
+      });
+      return;
+    }
+
+    let isMounted = true;
+    setIsCheckingPhone(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkCustomerByPhone(rawPhone);
+        if (!isMounted) return;
+        setIsCheckingPhone(false);
+        if (res.exists && res.profile) {
+          setExistingProfile(res.profile);
+          if (res.profile.preferences && !preferences) {
+            setPreferences(res.profile.preferences);
+            onUpdatePreferences?.(res.profile.preferences);
+          }
+          onUpdateLoyaltyInfo({
+            optedIn: wantsMembership,
+            isNewMember: false,
+            phone: rawPhone,
+          });
+        } else {
+          setExistingProfile(null);
+          onUpdateLoyaltyInfo({
+            optedIn: wantsMembership,
+            isNewMember: true,
+            phone: rawPhone,
+          });
+        }
+      } catch {
+        if (isMounted) setIsCheckingPhone(false);
+      }
+    }, 400);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [customer.phone, wantsMembership]);
+
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const total = cart.reduce((sum, item) => {
     const extras = item.extras.reduce(
@@ -229,6 +294,65 @@ export function OrderPanel({
             value={customer.note}
           />
         </label>
+
+        {/* Membership Loyalty Registration Section */}
+        <div className="membership-box">
+          <div className="membership-toggle-row">
+            <label className="membership-checkbox-label">
+              <input
+                type="checkbox"
+                checked={wantsMembership}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setWantsMembership(val);
+                  onUpdateLoyaltyInfo({
+                    optedIn: val,
+                    isNewMember: !existingProfile,
+                    phone: customer.phone.trim(),
+                  });
+                }}
+              />
+              <span className="membership-title">
+                🌿 Đăng ký / Tích điểm thành viên Matchaholic
+              </span>
+            </label>
+          </div>
+
+          {wantsMembership && (
+            <div className="membership-details-card">
+              {isCheckingPhone ? (
+                <p className="membership-hint">⏳ Đang kiểm tra số điện thoại...</p>
+              ) : existingProfile ? (
+                <div className="existing-member-alert">
+                  <strong>🎉 Chào mừng bạn quay lại, {existingProfile.name || "Khách quen"}!</strong>
+                  <p>
+                    Số dư hiện tại: ⭐ <b>{existingProfile.loyaltyPoints}</b> điểm. Đơn hàng này sẽ được tích điểm tự động khi quán xác nhận qua Messenger.
+                  </p>
+                </div>
+              ) : (
+                <div className="new-member-fields">
+                  <span className="new-member-tag">✨ Đăng ký thành viên mới</span>
+                  <p className="membership-hint">
+                    Điểm thưởng sẽ được tích tự động cho số điện thoại <b>{customer.phone || "(nhập ở trên)"}</b> khi quán xác nhận qua Messenger.
+                  </p>
+                  <label className="membership-pref-label">
+                    <span>Sở thích / Khẩu vị quen thuộc (Tùy chọn)</span>
+                    <input
+                      type="text"
+                      value={preferences}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPreferences(val);
+                        onUpdatePreferences?.(val);
+                      }}
+                      placeholder="Ví dụ: Thích ít ngọt, nhiều matcha, thích kem mặn..."
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="checkout">

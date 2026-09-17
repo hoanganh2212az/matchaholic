@@ -88,3 +88,84 @@ test("generates readable order text with customization details", async () => {
   assert.match(orderText, /Kem mặn/);
   assert.match(orderText, /Total: 74\.000 VND/);
 });
+
+test("formats Vietnamese phone numbers and generates order codes correctly", async () => {
+  const { normalizeVietnamesePhone, formatPhoneDisplay, generateOrderCode } =
+    await import("../lib/supabase.ts");
+
+  assert.equal(normalizeVietnamesePhone("0901234567"), "+84901234567");
+  assert.equal(normalizeVietnamesePhone("+84901234567"), "+84901234567");
+  assert.equal(normalizeVietnamesePhone("84901234567"), "+84901234567");
+
+  const display = formatPhoneDisplay("+84901234567");
+  assert.equal(display, "0901 234 567");
+
+  const code = generateOrderCode();
+  assert.match(code, /^MH-\d{4}$/);
+});
+
+test("includes order code in generated order text", async () => {
+  const { generateOrderText } = await import("../lib/formatters.ts");
+  const textWithCode = generateOrderText(
+    {
+      name: "Chau",
+      phone: "0901234567",
+      fulfillment: "Pickup",
+      address: "",
+      note: "",
+    },
+    [],
+    0,
+    "MH-9999",
+  );
+
+  assert.match(textWithCode, /Matcha\.holic order #MH-9999/);
+  assert.match(textWithCode, /Xác nhận đơn để tích điểm/);
+});
+
+test("appends loyalty registration message when customer opts into membership", async () => {
+  const { generateOrderText } = await import("../lib/formatters.ts");
+  const newMemberText = generateOrderText(
+    {
+      name: "Chau",
+      phone: "0901234567",
+      fulfillment: "Pickup",
+      address: "",
+      note: "",
+    },
+    [],
+    0,
+    "MH-1234",
+    {
+      optedIn: true,
+      isNewMember: true,
+      phone: "0901234567",
+    },
+  );
+
+  assert.match(
+    newMemberText,
+    /Mình muốn đăng kí tích điểm, bạn kích hoạt cho số điện thoại: 0901234567 nha\. Hẹn gặp Matchaholic lần tiếp theo!/,
+  );
+
+  const existingMemberText = generateOrderText(
+    {
+      name: "Chau",
+      phone: "0901234567",
+      fulfillment: "Pickup",
+      address: "",
+      note: "",
+    },
+    [],
+    0,
+    "MH-1234",
+    {
+      optedIn: true,
+      isNewMember: false,
+      phone: "0901234567",
+    },
+  );
+
+  assert.match(existingMemberText, /Khách hàng thân thiết: Tích điểm cho SĐT 0901234567/);
+});
+
