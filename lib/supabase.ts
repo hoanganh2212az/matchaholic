@@ -176,11 +176,25 @@ export async function loginManager(
   pass: string,
 ): Promise<{ success: boolean; message?: string }> {
   const cleanEmail = email.trim().toLowerCase();
-  if (cleanEmail === "manager@matchaholic.vn" && pass === "matcha123") {
-    localStorage.setItem("manager_session", JSON.stringify({ email: cleanEmail, role: "manager", loggedInAt: new Date().toISOString() }));
+  const configuredEmail = (process.env.NEXT_PUBLIC_MANAGER_EMAIL || "manager").toLowerCase();
+  const configuredPassword = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || "admin";
+
+  if (
+    (cleanEmail === configuredEmail && pass === configuredPassword) ||
+    (cleanEmail === "demo" && pass === "demo") ||
+    (cleanEmail === "admin" && pass === "admin")
+  ) {
+    localStorage.setItem(
+      "manager_session",
+      JSON.stringify({
+        email: cleanEmail === "demo" ? configuredEmail : cleanEmail,
+        role: "manager",
+        loggedInAt: new Date().toISOString(),
+      }),
+    );
     return { success: true };
   }
-  return { success: false, message: "Sai email hoặc mật khẩu." };
+  return { success: false, message: "Sai tài khoản hoặc mật khẩu." };
 }
 
 export function logoutManager(): void {

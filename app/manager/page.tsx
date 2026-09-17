@@ -47,8 +47,8 @@ export default function ManagerPortal() {
     }
   }, []);
 
-  const [emailInput, setEmailInput] = useState("manager@matchaholic.vn");
-  const [passwordInput, setPasswordInput] = useState("matcha123");
+  const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -87,10 +87,8 @@ export default function ManagerPortal() {
   };
 
   const handleQuickDemoLogin = async () => {
-    setEmailInput("manager@matchaholic.vn");
-    setPasswordInput("matcha123");
     setLoginLoading(true);
-    await loginManager("demo", "admin");
+    await loginManager("demo", "demo");
     window.location.reload();
   };
 
@@ -184,7 +182,7 @@ export default function ManagerPortal() {
                 type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="manager@matchaholic.vn"
+                placeholder="manager@example.com"
                 required
               />
             </label>
