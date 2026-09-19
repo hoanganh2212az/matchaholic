@@ -175,26 +175,34 @@ export async function loginManager(
   email: string,
   pass: string,
 ): Promise<{ success: boolean; message?: string }> {
-  const cleanEmail = email.trim().toLowerCase();
-  const configuredEmail = (process.env.NEXT_PUBLIC_MANAGER_EMAIL || "manager").toLowerCase();
-  const configuredPassword = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || "admin";
-
-  if (
-    (cleanEmail === configuredEmail && pass === configuredPassword) ||
-    (cleanEmail === "demo" && pass === "demo") ||
-    (cleanEmail === "admin" && pass === "admin")
-  ) {
-    localStorage.setItem(
-      "manager_session",
-      JSON.stringify({
-        email: cleanEmail === "demo" ? configuredEmail : cleanEmail,
-        role: "manager",
-        loggedInAt: new Date().toISOString(),
-      }),
-    );
-    return { success: true };
+  try {
+    const res = await fetch("/api/manager/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: pass }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.setItem(
+        "manager_session",
+        JSON.stringify({
+          email: data.email,
+          role: "manager",
+          loggedInAt: new Date().toISOString(),
+        }),
+      );
+      return { success: true };
+    }
+    return {
+      success: false,
+      message: data.message || "Sai tài khoản hoặc mật khẩu.",
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: "Không thể kết nối đến máy chủ xác thực.",
+    };
   }
-  return { success: false, message: "Sai tài khoản hoặc mật khẩu." };
 }
 
 export function logoutManager(): void {
